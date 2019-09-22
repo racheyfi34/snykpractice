@@ -35,7 +35,7 @@ interface GoodResult {
   ok: true;
   data: string;
   path: string;
-  subProjectName?: string;
+  projectName?: string;
 }
 
 interface BadResult {
@@ -155,10 +155,10 @@ async function monitor(...args0: MethodArgs): Promise<any> {
       // SinglePackageResult is a legacy format understood by Registry, so we have to convert
       // a MultiProjectResult to an array of these.
 
-      let perSubProjectResults: pluginApi.SinglePackageResult[] = [];
+      let perProjectResult: pluginApi.SinglePackageResult[] = [];
       let advertiseSubprojectsCount: number | null = null;
       if (pluginApi.isMultiResult(inspectResult)) {
-        perSubProjectResults = inspectResult.scannedProjects.map(
+        perProjectResult = inspectResult.scannedProjects.map(
           (scannedProject) => ({plugin: inspectResult.plugin, package: scannedProject.depTree}));
       } else {
         if (!options['gradle-sub-project']
@@ -167,15 +167,15 @@ async function monitor(...args0: MethodArgs): Promise<any> {
           && inspectResult.plugin.meta.allSubProjectNames.length > 1) {
           advertiseSubprojectsCount = inspectResult.plugin.meta.allSubProjectNames.length;
         }
-        perSubProjectResults = [inspectResult];
+        perProjectResult = [inspectResult];
       }
 
       // Post the project dependencies to the Registry
-      for (const subProjDeps of perSubProjectResults) {
-        maybePrintDeps(options, subProjDeps.package);
+      for (const projectDeps of perProjectResult) {
+        maybePrintDeps(options, projectDeps.package);
 
         const res = await promiseOrCleanup(
-          snykMonitor(path, meta, subProjDeps, targetFile),
+          snykMonitor(path, meta, projectDeps, targetFile),
           spinner.clear(postingMonitorSpinnerLabel));
 
         await spinner.clear(postingMonitorSpinnerLabel)(res);
@@ -190,18 +190,18 @@ async function monitor(...args0: MethodArgs): Promise<any> {
         const manageUrl = url.format(endpoint);
 
         endpoint.pathname = leader + '/monitor/' + res.id;
-        const subProjectName = pluginApi.isMultiResult(inspectResult)
-          ? subProjDeps.package.name
+        const projectName = (pluginApi.isMultiResult(inspectResult))
+          ? projectDeps.package.name
           : undefined;
         const monOutput = formatMonitorOutput(
           packageManager,
           res,
           manageUrl,
           options,
-          subProjectName,
+          projectName,
           advertiseSubprojectsCount,
         );
-        results.push({ok: true, data: monOutput, path, subProjectName});
+        results.push({ok: true, data: monOutput, path, projectName});
       }
       // push a good result
     } catch (err) {
@@ -214,8 +214,8 @@ async function monitor(...args0: MethodArgs): Promise<any> {
     let dataToSend = results.map((result) => {
       if (result.ok) {
         const jsonData = JSON.parse(result.data);
-        if (result.subProjectName) {
-          jsonData.subProjectName = result.subProjectName;
+        if (result.projectName) {
+          jsonData.projectName = result.projectName;
         }
         return jsonData;
       }
@@ -257,11 +257,11 @@ function formatMonitorOutput(
     res: MonitorResult,
     manageUrl,
     options,
-    subProjectName?: string,
+    projectName?: string,
     advertiseSubprojectsCount?: number|null,
   ) {
   const issues = res.licensesPolicy ? 'issues' : 'vulnerabilities';
-  const humanReadableName = subProjectName ? `${res.path} (${subProjectName})` : res.path;
+  const humanReadableName = projectName ? `${res.path} (${projectName})` : res.path;
   const strOutput = chalk.bold.white('\nMonitoring ' + humanReadableName + '...\n\n') +
     (packageManager === 'yarn' ?
       'A yarn.lock file was detected - continuing as a Yarn project.\n' : '') +
